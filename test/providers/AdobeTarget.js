@@ -141,3 +141,32 @@ test("Provider returns POST data", t => {
     t.is(typeof profileTesting, "object");
     t.is(profileTesting.value, "testing123");
 });
+
+test("Adobe Target decodes Delivery API operations and preserves nested scope", t => {
+    const payload = {
+        id: { tntId: "visitor" }, context: { address: { url: "https://example.com" } },
+        execute: { pageLoad: { parameters: { pageName: "Home" }, profileParameters: { member: "yes" } }, mboxes: [{ name: "hero", index: 0, order: { id: "order", total: 0 } }] },
+        prefetch: { views: [{ name: "checkout" }] },
+        notifications: [{ id: "one", type: "display", mbox: { name: "offer" }, tokens: ["opaque"] }, { id: "two", type: "click" }]
+    };
+    const result = OmnibugProvider.parseUrl("https://demo.tt.omtrdc.net/rest/v1/delivery?client=demo&sessionId=s1", JSON.stringify(payload));
+    const fields = Object.fromEntries(result.data.map(item => [item.key, item]));
+    t.is(result.provider.key, "ADOBETARGET");
+    t.is(fields.omnibug_account.value, "demo");
+    t.is(fields.omnibug_requestType.value, "Page Load, Mbox Execute, Prefetch, Display, Click");
+    t.is(fields["execute.pageLoad.profileParameters.member"].group, "profile");
+    t.is(fields["execute.mboxes[0].order.total"].value, "0");
+    t.is(fields["notifications[0].tokens[0]"].value, "opaque");
+    t.is(fields["id.tntId"].group, "identity");
+    t.is(fields["context.address.url"].group, "context");
+});
+
+test("Adobe Target accepts legacy encoded POSTs and rejects lookalikes", t => {
+    const provider = new AdobeTargetProvider();
+    const result = provider.parseUrl("https://demo.tt.omtrdc.net/m2/demo/mbox/json", "mbox=hero&profile.member=yes");
+    t.is(result.data.find(item => item.key === "mbox").value, "hero");
+    t.is(result.data.find(item => item.key === "profile.member").group, "profile");
+    t.false(provider.checkUrl("https://demo.tt.omtrdc.net.evil.test/rest/v1/delivery"));
+    t.false(provider.checkUrl("https://example.com/?url=https://demo.tt.omtrdc.net/rest/v1/delivery"));
+    t.false(provider.checkUrl("https://demo.tt.omtrdc.net/rest/v1/delivery/extra"));
+});
