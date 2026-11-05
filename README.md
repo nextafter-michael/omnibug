@@ -48,13 +48,22 @@ The Chrome ZIP is generated in `build/`. Generated provider bundles, CSS, `platf
 
 ### Validation
 
-Provider tests use AVA and the existing browser mocks. The legacy AVA/esm stack is incompatible with Node 24; the repository's original Node 12 runtime works for the complete test command. This compatibility invocation runs it without changing the installed system Node:
+Provider tests use AVA and the existing browser mocks. The legacy AVA/esm stack is incompatible with Node 24; the repository's original Node 12 runtime runs the legacy test stack. This compatibility invocation runs it without changing the installed system Node:
 
 ```sh
 npx --yes --package=node@12 -- node node_modules/yarn/bin/yarn.js test --concurrency=2
 ```
 
 New and modified providers should also be linted explicitly with `eslint --no-ignore`, because the inherited ESLint configuration broadly ignores source files.
+
+Validation on 2026-11-05: the Chrome build, explicit provider lint, compiled script/manifest checks, and all 45 tests in changed suites pass. The full test-and-coverage command reports 330 passing tests, 5 failures and 24 TODOs. The same five failures were reproduced against an untouched `master` snapshot with the same runtime/dependencies:
+
+- Three tracker tests expect an enabled analytics implementation, while the existing tracker is a disabled stub.
+- One settings test asserts a Node-version-specific exception message.
+- One SplitIO test calls its JSON parser without a request body.
+
+These unrelated baseline failures remain unchanged. The full suite therefore does not exit successfully even though the integration tests pass.
+
 
 ### Request interpretation
 
