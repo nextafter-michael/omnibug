@@ -11,7 +11,7 @@ class AdobeTargetProvider extends BaseProvider
     {
         super();
         this._key        = "ADOBETARGET";
-        this._pattern    = /\.tt\.omtrdc\.net\/(?!cdn\/)/;
+        this._pattern    = /^https?:\/\/[a-z0-9-]+\.tt\.omtrdc\.net\/(?:m2\/[^/?#]+\/mbox\/[^/?#]*|rest\/v[12]\/(?:delivery|mbox\/?|batchmbox\/?))(?:[?#]|$)/i;
         this._name       = "Adobe Target";
         this._type       = "testing";
         this._keywords   = ["test target", "test & target", "at", "tnt", "t&t", "omniture"];
@@ -25,8 +25,8 @@ class AdobeTargetProvider extends BaseProvider
     get columnMapping()
     {
         return {
-            "account":      "mbox",
-            "requestType":  "mboxType"
+            "account":      "omnibug_account",
+            "requestType":  "omnibug_requestType"
         };
     }
 
@@ -45,7 +45,13 @@ class AdobeTargetProvider extends BaseProvider
             {
                 "key": "profile",
                 "name": "Profile Attributes"
-            }
+            },
+            { "key": "execute", "name": "Executed Locations" },
+            { "key": "prefetch", "name": "Prefetched Locations" },
+            { "key": "notifications", "name": "Notifications" },
+            { "key": "context", "name": "Page and Browser Context" },
+            { "key": "identity", "name": "Identity" },
+            { "key": "integration", "name": "Experience Cloud Integration" }
         ];
     }
 
@@ -151,7 +157,22 @@ class AdobeTargetProvider extends BaseProvider
     handleQueryParam(name, value)
     {
         let result = {};
-        if(name.indexOf("profile.") === 0) {
+        if (/(?:^|\.)profileParameters\./.test(name)) {
+            result = super.handleQueryParam(name, value);
+            result.group = "profile";
+        } else if (/^(?:execute|prefetch|notifications)(?:\.|\[)/.test(name)) {
+            result = super.handleQueryParam(name, value);
+            result.group = name.split(".")[0].split("[")[0];
+        } else if (/^context\./.test(name)) {
+            result = super.handleQueryParam(name, value);
+            result.group = "context";
+        } else if (/^id\./.test(name)) {
+            result = super.handleQueryParam(name, value);
+            result.group = "identity";
+        } else if (/^experienceCloud\./.test(name)) {
+            result = super.handleQueryParam(name, value);
+            result.group = "integration";
+        } else if(name.indexOf("profile.") === 0) {
             result = {
                 "key":   name,
                 "field": name.slice(8),
@@ -191,6 +212,47 @@ class AdobeTargetProvider extends BaseProvider
             });
         }
 
+        const operations = [];
+        for (const [key, value] of params) {
+            if (/^execute\.pageLoad(?:\.|$)/.test(key)) {
+                operations.push("Page Load");
+            } else if (/^execute\.mboxes\[/.test(key)) {
+                operations.push("Mbox Execute");
+            } else if (/^prefetch(?:\.|$)/.test(key)) {
+                operations.push("Prefetch");
+            } else if (/^notifications\[\d+\]\.type$/.test(key)) {
+                operations.push(value === "display" ? "Display" : value === "click" ? "Click" : value);
+            }
+        }
+        const types = Array.from(new Set(operations));
+        const pathType = results.find(item => item.key === "mboxType");
+        const pathClient = results.find(item => item.key === "clientCode");
+        results.push({
+            "key": "omnibug_account",
+            "value": params.get("client") || params.get("clientCode") || (pathClient && pathClient.value) || url.hostname.split(".")[0],
+            "hidden": true
+        });
+        results.push({
+            "key": "omnibug_requestType",
+            "value": types.join(", ") || params.get("mboxType") || (pathType && pathType.value) || "Delivery",
+            "hidden": true
+        });
         return results;
+    }
+
+    /**
+     * Accept JSON Delivery API requests and legacy form-encoded mbox requests.
+     * @param {*} postData
+     * @returns {Array}
+     */
+    parsePostData(postData = "") {
+        if (typeof postData === "string" && postData) {
+            try {
+                JSON.parse(postData);
+            } catch (e) {
+                return Array.from(new URLSearchParams(postData));
+            }
+        }
+        return super.parsePostData(postData);
     }
 }
