@@ -110,9 +110,15 @@ chrome.webRequest.onBeforeRequest.addListener(
             if(typeof body.error !== "undefined" && body.error) {
                 data.request.postError = true;
             } else if (typeof body.raw !== "undefined" && body.raw[0]) {
-                data.request.postData = (new Uint8Array(body.raw[0].bytes)).reduce((postData, byte) => {
-                    return postData + String.fromCharCode(byte);
-                }, "");
+                if (body.raw.every(part => part.bytes)) {
+                    const decoder = new TextDecoder("utf-8");
+                    data.request.postData = body.raw.map((part, index) => {
+                        return decoder.decode(part.bytes, { stream: index < body.raw.length - 1 });
+                    }).join("");
+                } else {
+                    // File upload parts are not available as bytes to the extension.
+                    data.request.postError = true;
+                }
             } else if (typeof body.formData === "object") {
                 data.request.postData = body.formData;
             }
