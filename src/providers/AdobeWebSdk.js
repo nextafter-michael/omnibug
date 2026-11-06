@@ -1,5 +1,5 @@
 /**
- * Adobe Analytics
+ * Adobe Experience Platform Web SDK
  * http://www.adobe.com/data-analytics-cloud/analytics.html
  *
  * @class
@@ -53,7 +53,9 @@ class AdobeWebSdkProvider extends BaseProvider
             {
                 "key": "meta",
                 "name": "Metadata"
-            }
+            },
+            { "key": "personalization", "name": "Personalization" },
+            { "key": "target", "name": "Target Parameters" }
         ];
     }
 
@@ -87,6 +89,12 @@ class AdobeWebSdkProvider extends BaseProvider
      */
     handleQueryParam(name, value)
     {
+        if (/^events\[\d+\]\.data\.__adobe\.target\./.test(name)) {
+            return { "key": name, "field": name, "value": value, "group": "target" };
+        }
+        if (/^query\.personalization\.|^events\[\d+\]\.(?:query\.personalization\.|xdm\._experience\.decisioning\.)/.test(name)) {
+            return { "key": name, "field": name, "value": value, "group": "personalization" };
+        }
         if(/^meta\./.test(name)) {
             return {
                 "key":   name,
